@@ -16,11 +16,6 @@
 
 ---
 
-> [!IMPORTANT]
-> Transform your browser into a real-time haptic feedback router. This tool captures live game audio via Screen Share and translates it into high-fidelity haptics via
-> Bluetooth for PlayStation DualSense controllers—no cables or custom dongles required!
-> https://rafaelvaloto.github.io/DS5-Web-Audio-Haptics
-
 ## 🚀 Project Overview
 
 This project is a **C/C++ firmware** for the **Raspberry Pi Pico W** that establishes a full-featured **Bluetooth Classic connection** with the **Sony DualSense (PS5)** controller. It demonstrates the extreme portability of the **[Gamepad-Core](https://github.com/rafaelvaloto/Gamepad-Core)** library by running the same cross-platform API that powers high-end game engines (Unreal Engine, Godot, O3DE) on a resource-constrained microcontroller.
