@@ -22,6 +22,9 @@
 #define HCI_OUTGOING_PRE_BUFFER_SIZE 4
 
 
+// SDP server: a reconnecting DualSense queries the host's SDP records first
+#define MAX_NR_SERVICE_RECORD_ITEMS 2
+
 #define MAX_NR_RFCOMM_MULTIPLEXERS 0
 #define MAX_NR_RFCOMM_SERVICES 0
 #define MAX_NR_RFCOMM_CHANNELS 0

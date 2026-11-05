@@ -14,6 +14,12 @@
 #include "GImplementations/Utils/GamepadSensors.h"
 #include "classic/hid_host.h"
 #include "classic/sdp_server.h"
+#include "classic/device_id_server.h"
+#include "panel_config.h"
+#ifdef PANEL_BT_DEBUG
+#include "hci_dump.h"
+#include "hci_dump_embedded_stdout.h"
+#endif
 
 // Connection state
 static uint16_t response_report = 0;
@@ -37,6 +43,11 @@ static bool factory_calibration_loaded = false;
 
 // Defined in panel_core.h: adds the user's gyro offset on top of the factory calibration.
 static void panel_apply_user_calibration(FGamepadCalibration& Calibration);
+
+// When the pad reconnects by itself it opens the HID channels to us.
+// If it has not done so after this time, we open them ourselves.
+static btstack_timer_source_t open_channels_timer;
+constexpr uint32_t OPEN_CHANNELS_FALLBACK_MS = 1500;
 
 inline void bt_inquiry_start() {
     inquiry_active = true;
@@ -135,8 +146,14 @@ inline void l2cap_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t 
             printf("[L2CAP] Open channel! CID: 0x%04x, PSM: 0x%04x, Addr: %s\n",
                    cid, psm, bd_addr_to_str(addr));
 
+            // Channels opened by the pad (incoming) are not stored by l2cap_create_channel.
+            if (psm == PSM_HID_CONTROL) l2cap_cid_control = cid;
+            if (psm == PSM_HID_INTERRUPT) l2cap_cid_interrupt = cid;
+
             if (psm == PSM_HID_CONTROL) {
-                if (l2cap_cid_interrupt == 0) {
+                // Only open the interrupt channel ourselves if we opened control;
+                // a reconnecting pad opens interrupt by itself.
+                if (we_initiated_connection) {
                     printf("[L2CAP] HID Control connected. Opening HID Interrupt...\n");
                     l2cap_create_channel(&l2cap_packet_handler, addr, PSM_HID_INTERRUPT, 0xffff, &l2cap_cid_interrupt);
                 }
@@ -177,6 +194,15 @@ inline void l2cap_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t 
                     break;
                 default: printf("error_or_success l2cap_send %02X \n", cod);
             };
+            break;
+        }
+
+        case L2CAP_EVENT_INCOMING_CONNECTION: {
+            uint16_t local_cid = l2cap_event_incoming_connection_get_local_cid(packet);
+            uint16_t psm = l2cap_event_incoming_connection_get_psm(packet);
+            printf("[L2CAP] Incoming channel PSM: 0x%04x, CID: 0x%04x. Accepting...\n", psm, local_cid);
+            btstack_run_loop_remove_timer(&open_channels_timer);
+            l2cap_accept_connection(local_cid);
             break;
         }
 
@@ -386,11 +412,27 @@ inline void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
             if (status == ERROR_CODE_SUCCESS && enabled) {
                 printf("[HCI] Encryption ACTIVATED!\n");
 
-                // ALWAYS open L2CAP after encryption - DualSense expects it
-                if (l2cap_cid_control == 0) {
-                    printf("[L2CAP] Opening HID Control channel...\n");
-                    l2cap_create_channel(&l2cap_packet_handler, current_device_addr,
-                                        PSM_HID_CONTROL, 0xffff, &l2cap_cid_control);
+                if (we_initiated_connection) {
+                    // New pairing / we connected: open the HID channels ourselves.
+                    if (l2cap_cid_control == 0) {
+                        printf("[L2CAP] Opening HID Control channel...\n");
+                        l2cap_create_channel(&l2cap_packet_handler, current_device_addr,
+                                            PSM_HID_CONTROL, 0xffff, &l2cap_cid_control);
+                    }
+                } else {
+                    // The pad reconnected: it opens the channels. Fallback if it does not.
+                    btstack_run_loop_remove_timer(&open_channels_timer);
+                    btstack_run_loop_set_timer_handler(&open_channels_timer, [](btstack_timer_source_t*) {
+                        if (l2cap_cid_control == 0 && acl_handle != HCI_CON_HANDLE_INVALID) {
+                            printf("[L2CAP] Pad did not open channels, opening them...\n");
+                            we_initiated_connection = true;
+                            l2cap_create_channel(&l2cap_packet_handler, current_device_addr,
+                                                PSM_HID_CONTROL, 0xffff, &l2cap_cid_control);
+                        }
+                    });
+                    btstack_run_loop_set_timer(&open_channels_timer, OPEN_CHANNELS_FALLBACK_MS);
+                    btstack_run_loop_add_timer(&open_channels_timer);
+                    printf("[L2CAP] Waiting for the pad to open HID channels...\n");
                 }
             } else if (status != ERROR_CODE_SUCCESS) {
                 printf("[HCI] Encryption error: 0x%02x\n", status);
@@ -501,7 +543,23 @@ inline void enable_discovery() {
 
 static void init_bluetooth() {
     printf("[BT] Initializing Bluetooth Stack...\n");
+#ifdef PANEL_BT_DEBUG
+    // Full HCI packet dump to the serial log (debug builds only).
+    hci_dump_init(hci_dump_embedded_stdout_get_instance());
+#endif
     l2cap_init();
+
+    // Accept the HID channels a reconnecting pad opens to us.
+    l2cap_register_service(&l2cap_packet_handler, PSM_HID_CONTROL, 672, LEVEL_2);
+    l2cap_register_service(&l2cap_packet_handler, PSM_HID_INTERRUPT, 672, LEVEL_2);
+
+    // SDP server: on reconnect the pad first opens an SDP channel (PSM 0x0001)
+    // and drops the link when it is refused.
+    static uint8_t device_id_record[100];
+    sdp_init();
+    device_id_create_sdp_record(device_id_record, sdp_create_service_record_handle(),
+                                DEVICE_ID_VENDOR_ID_SOURCE_USB, 0x2E8A, 0x0001, 0x0100);
+    sdp_register_service(device_id_record);
 
     gap_set_local_name("Gamepad-Core Host");
 
