@@ -446,8 +446,10 @@ inline void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
             if (status != ERROR_CODE_SUCCESS) {
                 printf("[HCI] Authentication failed: 0x%02x\n", status);
 
-                // If we used a link key and it failed, delete it
-                if (link_key_used) {
+                // Delete the saved key only when the pad says it does not know it
+                // (0x06 PIN or Key Missing). Other errors, e.g. 0x13 when the pad drops
+                // the connection mid-way, used to wipe a valid pairing.
+                if (link_key_used && status == ERROR_CODE_PIN_OR_KEY_MISSING) {
                     printf("[HCI] Link Key rejected by device. Deleting...\n");
                     flash_clear_config();
                     auth_failure_count++;
