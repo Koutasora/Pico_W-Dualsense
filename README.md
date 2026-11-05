@@ -1,3 +1,116 @@
+# DualSense Panel for Raspberry Pi Pico 2 W
+
+Firmware for the **Raspberry Pi Pico 2 W** that connects to a Sony **DualSense** controller over Bluetooth and serves a control panel in the browser. Open the panel to watch every input live and to test the lightbar, player LEDs, rumble and adaptive triggers. You can also pair, disconnect and unpair the controller from there.
+
+It is a fork of [rafaelvaloto/Pico_W-Dualsense](https://github.com/rafaelvaloto/Pico_W-Dualsense), built on [Gamepad-Core](https://github.com/rafaelvaloto/Gamepad-Core). The original project is a Bluetooth test demo. This fork adds the panel, fixes reconnecting, and makes the controller behave like a normal pad: the buttons no longer trigger demo effects.
+
+## Hardware
+
+- Raspberry Pi **Pico 2 W** (RP2350). The release file does not run on the original Pico W (RP2040).
+- Sony DualSense (PS5) controller
+- USB cable, and optionally a power bank or battery for Wi-Fi mode
+
+## Install
+
+1. Download `DualSense-Panel-pico2w-<version>.uf2` from [Releases](../../releases).
+2. Hold the **BOOTSEL** button on the Pico, plug it into the PC, release the button.
+3. Drag the `.uf2` file onto the `RP2350` drive. The Pico restarts with the new firmware.
+
+## Pairing and reconnecting
+
+- **First pairing:** hold **PS + Create** on the controller until the lightbar blinks fast. Pico searches for about 40 seconds after it starts. If that time has passed, click **Search** in the panel.
+- **Later:** press **PS**. The controller reconnects by itself. The pairing is stored in Pico's flash and survives firmware updates.
+- If the controller was paired with a PS5 or a PC in the meantime, pair it with the Pico again.
+
+## Opening the panel
+
+The panel address is **`http://192.168.20.1`** in both modes.
+
+| Pico is connected to | How to reach the panel |
+|---|---|
+| A PC over USB | Open `http://192.168.20.1` on that PC. Pico shows up as a small USB network adapter ("Remote NDIS"). Windows uses its built-in driver, and the PC's own internet connection is not affected. |
+| A power bank / charger only | Connect your phone or laptop to the Wi-Fi network **`DualSense-Pico`** (password `dualsense`), then open `http://192.168.20.1`. The phone may warn that the network has no internet. That is expected. |
+
+**Time limit.** The panel stays reachable for **5 minutes after the last use**. Opening the page and clicking controls count as use. A tab that only shows the live view does not.
+
+- On USB, the panel network then stops answering. Replug the cable to open it again.
+- On Wi-Fi, the radio turns off completely and stops transmitting. Power-cycle the Pico to open it again.
+- The panel shows how much time is left.
+
+The serial log (a USB COM port, 115200 baud) is available at all times. The file `panel/panel.html` can also be opened directly in Chrome or Edge: it talks to Pico over that COM port (Web Serial), as a fallback.
+
+## What the panel offers
+
+- **Controller:** connection state, paired address, battery, plus Search, Disconnect and Unpair.
+- **Live view:** a drawing of the controller that lights up the pressed buttons, moves the sticks, fills L2/R2 and shows the finger on the touchpad. Exact values are listed below it. The state is pushed about 40 times per second.
+- **Light:** lightbar colour, player LEDs and their brightness.
+- **Motion:** gyroscope and accelerometer readings, plus a "Zero gyro" step that removes the drift while the controller lies still.
+- **Rumble:** left and right motor strength, with a test pulse of a chosen length.
+- **Adaptive triggers:** off, resistance (start and force) and presets (GameCube, feedback, bow, gallop, weapon, automatic gun, machine) for L2 and R2 separately.
+- **Wi-Fi:** Auto (5-minute window on battery) or Off.
+- **Language:** English and Polish, with light and dark themes.
+
+## Configuration
+
+Settings are in [`src/panel_config.h`](src/panel_config.h). Rebuild after changing them.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `PANEL_AP_SSID` / `PANEL_AP_PASSWORD` | `DualSense-Pico` / `dualsense` | Wi-Fi network name and password (WPA2, at least 8 characters) |
+| `PANEL_AP_IP` / `PANEL_AP_IP_STR` | `192.168.20.1` | Panel address, the same for Wi-Fi and USB |
+| `PANEL_WINDOW_MS` | 5 minutes | How long the panel stays reachable after the last use |
+| `PANEL_NO_USB_MS` | 4 s | On battery, delay before Wi-Fi starts |
+| `PANEL_STREAM_MS` | 20 ms | Live view update interval |
+| `PANEL_BT_DEBUG` | off | Dumps every Bluetooth HCI packet to the serial log |
+
+## Building from source
+
+Requirements: [Pico SDK](https://github.com/raspberrypi/pico-sdk) 2.1.1 with submodules, Arm GNU Toolchain (`arm-none-eabi-gcc`, tested with 14.2), CMake and Ninja. `picotool` and `pioasm` come from [pico-sdk-tools](https://github.com/raspberrypi/pico-sdk-tools) or are built by the SDK.
+
+1. Clone this fork, branch `panel-web`.
+2. Put **Gamepad-Core v1.0.5** into `lib/Gamepad-Core`. Newer versions do not compile for the Pico.
+
+   ```sh
+   git clone --branch v1.0.5 --depth 1 https://github.com/rafaelvaloto/Gamepad-Core.git
+   mkdir -p Pico_W-Dualsense/lib/Gamepad-Core
+   cp -r Gamepad-Core/Source Gamepad-Core/CMakeLists.txt Gamepad-Core/LICENSE Pico_W-Dualsense/lib/Gamepad-Core/
+   ```
+
+3. Configure and build for the Pico 2 W:
+
+   ```sh
+   export PICO_SDK_PATH=/path/to/pico-sdk
+   cmake -S . -B build -G Ninja -DPICO_BOARD=pico2_w -DCMAKE_BUILD_TYPE=Release
+   cmake --build build
+   ```
+
+The firmware is `build/dualsense_test.uf2`. After the build, CMake tries to flash a connected Pico with `picotool`. Without a Pico that last step fails, but the `.uf2` file is already there.
+
+## Changes compared to the original
+
+- **Reconnecting fixed:** on reconnect the DualSense first opens an SDP channel and drops the link when it is refused. Pico now runs an SDP server and accepts the HID channels the controller opens.
+- **Pairing no longer erased by mistake:** the saved key used to be deleted on any authentication error. Now it is deleted only when the controller reports the key as missing.
+- **Factory calibration read correctly:** the motion calibration is taken from the controller's reply (feature report `0x05`) instead of the request buffer.
+- **Builds against Gamepad-Core v1.0.5.**
+- **Demo removed:** the original button demo (rumble on Cross and Circle, lights, trigger presets on the D-pad) is gone. All of that is in the panel.
+- **USB stack:** USB is handled by the firmware itself (TinyUSB) instead of `pico_stdio_usb`. That gives one cable with a network adapter, the serial log and the `picotool` reset interface. TinyUSB, Bluetooth and lwIP all run in the same CYW43 async context.
+
+## Project layout
+
+| Path | Contents |
+|---|---|
+| `src/main.cpp` | Startup and main loop |
+| `src/pico_w_btstack.h` | Bluetooth: pairing, reconnecting, HID channels, SDP |
+| `src/panel_core.h` | Panel commands and JSON state (shared by USB and Wi-Fi) |
+| `src/web/` | Wi-Fi access point, HTTP server, DHCP server |
+| `src/usb/` | USB descriptors, RNDIS network adapter, serial log, reset interface |
+| `panel/panel.html` | The panel page, embedded into the firmware at build time |
+
+## Original author README
+
+<details>
+<summary>Show the README of the original project (rafaelvaloto/Pico_W-Dualsense)</summary>
+
 <div align="center">
 
 # 🎮 Pico W + DualSense (PS5)
@@ -363,3 +476,15 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - **Gamepad-Core Issues**: [Library Support](https://github.com/rafaelvaloto/Gamepad-Core/issues)
 
 ---
+
+</details>
+
+## License
+
+MIT, see [LICENSE](LICENSE). The original project is Copyright (c) 2026 Rafael Valoto. The changes in this fork are published under the same license.
+
+Third-party parts:
+- [Gamepad-Core](https://github.com/rafaelvaloto/Gamepad-Core) by Rafael Valoto (MIT)
+- [Pico SDK](https://github.com/raspberrypi/pico-sdk), [BTstack](https://github.com/bluekitchen/btstack), [TinyUSB](https://github.com/hathach/tinyusb) and [lwIP](https://savannah.nongnu.org/projects/lwip/), under their own licenses
+- `src/web/dhcpserver.c`: from the Raspberry Pi pico-examples, originally from MicroPython (MIT)
+- The controller line drawing in the panel is the "Dualsense" vector by **Alex Martynov** (Tech And Electronics collection) from [SVG Repo](https://www.svgrepo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: split into separate parts, recoloured for the light and dark themes, with L2/R2 bars, a Mute button and player LED dots added.
