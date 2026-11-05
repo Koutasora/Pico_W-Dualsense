@@ -33,7 +33,7 @@
 
 namespace panel {
 
-enum WifiMode { WIFI_AUTO = 0, WIFI_ON = 1, WIFI_OFF = 2 };
+enum WifiMode { WIFI_AUTO = 0, WIFI_OFF = 2 };
 
 static critical_section_t cs;
 static char state_json[1100];
@@ -50,6 +50,9 @@ static bool stream_enabled = false;
 static int wifi_mode = WIFI_AUTO;
 static bool wifi_active = false;   // written by web::tick
 static bool usb_host = false;      // written by web::tick
+static int wifi_left_s = 0;        // seconds until Wi-Fi turns off
+static bool usb_net_on = false;    // panel reachable over the USB network
+static int usb_left_s = 0;         // seconds until the USB network panel closes
 
 static uint8_t light_rgb[3] = {0, 0, 255};
 static uint8_t player_mask = 0;
@@ -115,7 +118,7 @@ inline size_t copy_state(char* out, size_t n) {
 }
 
 inline const char* wifi_mode_name() {
-    return wifi_mode == WIFI_ON ? "on" : wifi_mode == WIFI_OFF ? "off" : "auto";
+    return wifi_mode == WIFI_OFF ? "off" : "auto";
 }
 
 inline void build_state() {
@@ -154,7 +157,8 @@ inline void build_state() {
         "\"tp\":[%d,%.0f,%.0f],\"gy\":[%.2f,%.2f,%.2f],\"ac\":[%.3f,%.3f,%.3f],"
         "\"mo\":%d,\"cal\":{\"f\":%d,\"st\":\"%s\",\"off\":[%.1f,%.1f,%.1f]},"
         "\"light\":[%u,%u,%u],\"pl\":[%u,%u],\"tr\":[\"%s\",\"%s\"],"
-        "\"wifi\":{\"mode\":\"%s\",\"on\":%d,\"ssid\":\"%s\",\"ip\":\"" PANEL_AP_IP_STR "\"},\"usb\":%d}",
+        "\"wifi\":{\"mode\":\"%s\",\"on\":%d,\"left\":%d,\"ssid\":\"%s\",\"ip\":\"" PANEL_AP_IP_STR "\"},"
+        "\"usb\":%d,\"usbnet\":{\"on\":%d,\"left\":%d}}",
         PANEL_FW_VERSION, bt, mac, bat, (unsigned long)b,
         lx, ly, rx, ry, l2, r2,
         touch, tx, ty, gx, gy, gz, ax, ay, az,
@@ -162,7 +166,8 @@ inline void build_state() {
         user_gyro_offset[0], user_gyro_offset[1], user_gyro_offset[2],
         light_rgb[0], light_rgb[1], light_rgb[2], player_mask, player_bright,
         trig_mode[0], trig_mode[1],
-        wifi_mode_name(), wifi_active ? 1 : 0, PANEL_AP_SSID, usb_host ? 1 : 0);
+        wifi_mode_name(), wifi_active ? 1 : 0, wifi_left_s, PANEL_AP_SSID, usb_host ? 1 : 0,
+        usb_net_on ? 1 : 0, usb_left_s);
     if (n < 0 || n >= (int)sizeof(buf)) return;
 
     critical_section_enter_blocking(&cs);
@@ -211,7 +216,6 @@ inline void exec(const char* line, char* out, size_t outlen) {
     if (!strcmp(cmd, "wifi")) {
         if (sscanf(line, "%*s %15s", a1) != 1) return err("args");
         if (!strcmp(a1, "auto")) wifi_mode = WIFI_AUTO;
-        else if (!strcmp(a1, "on")) wifi_mode = WIFI_ON;
         else if (!strcmp(a1, "off")) wifi_mode = WIFI_OFF;
         else return err("args");
         return ok();

@@ -11,6 +11,7 @@
 #include "pico_w_platform.h"
 #include "panel_core.h"
 #include "web/web_server.h"
+#include "usb/usb_panel.h"
 using pico_platform = GamepadCore::TGenericHardwareInfo<pico_w_platform_policy>;
 
 inline void initialize_device() {
@@ -31,6 +32,7 @@ int main() {
         printf("ERROR: Failed to initialize CYW43\n");
         return -1;
     }
+    usb_panel_init();   // serial log + panel network + picotool reset over USB
 
     sleep_ms(2000);
 

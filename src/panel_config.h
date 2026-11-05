@@ -12,7 +12,10 @@
 // Uncomment to dump every Bluetooth HCI packet to the serial log (debugging).
 // #define PANEL_BT_DEBUG
 
-// Auto mode: Wi-Fi turns on after this long without a USB host,
-// and off after the USB host has been present for PANEL_USB_ON_MS.
+// The panel is reachable for this long after start or after the last use,
+// separately on Wi-Fi and on USB. Then Wi-Fi turns off (radio silent) and the
+// USB network stops answering. Power-cycle / replug to open it again.
+#define PANEL_WINDOW_MS   (5 * 60 * 1000)
+
+// On battery, Wi-Fi starts after this long without a PC on USB.
 #define PANEL_NO_USB_MS   4000
-#define PANEL_USB_ON_MS   1000

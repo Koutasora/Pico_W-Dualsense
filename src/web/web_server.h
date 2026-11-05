@@ -18,6 +18,7 @@
 #include "panel_config.h"
 #include "panel_core.h"
 #include "panel_html.h"   // generated at build time
+#include "usb_panel.h"
 
 extern "C" {
 #include "dhcpserver.h"
@@ -30,6 +31,21 @@ static tcp_pcb* listener = nullptr;
 static absolute_time_t usb_changed_at;
 static bool usb_last = false;
 static absolute_time_t next_check;
+
+// Time windows: the panel is reachable for PANEL_WINDOW_MS after start or
+// after the last request, then Wi-Fi turns off / the USB network goes silent.
+static volatile uint64_t last_activity_us = 0;   // set by the HTTP server
+static absolute_time_t wifi_since;
+static bool wifi_window_used = false;              // reset when USB is unplugged
+static absolute_time_t usb_since;
+static bool usb_window_open = false;
+
+inline int64_t window_left_ms(absolute_time_t since) {
+    uint64_t start = to_us_since_boot(since);
+    if (last_activity_us > start) start = last_activity_us;
+    int64_t end_us = (int64_t)start + (int64_t)PANEL_WINDOW_MS * 1000;
+    return (end_us - (int64_t)to_us_since_boot(get_absolute_time())) / 1000;
+}
 
 constexpr int MAX_CONN = 4;
 struct Conn {
@@ -127,7 +143,10 @@ inline void handle_request(Conn* c) {
     if (sscanf(c->req, "GET %299s", path) != 1) {
         return respond(c, 404, "text/plain", (const uint8_t*)"", 0);
     }
+    // Opening the page and sending commands keep the panel window open;
+    // the live state polling does not (an idle open tab must not keep Wi-Fi on).
     if (!strcmp(path, "/") || !strcmp(path, "/index.html")) {
+        last_activity_us = to_us_since_boot(get_absolute_time());
         return respond(c, 200, "text/html; charset=utf-8", panel_html, panel_html_len);
     }
     if (!strcmp(path, "/api/state")) {
@@ -137,6 +156,7 @@ inline void handle_request(Conn* c) {
     if (!strncmp(path, "/api/cmd?q=", 11)) {
         char cmd[panel::CMD_LEN];
         url_decode(path + 11, cmd, sizeof(cmd));
+        last_activity_us = to_us_since_boot(get_absolute_time());
         bool ok = panel::enqueue(cmd);
         int n = snprintf(c->dyn, sizeof(c->dyn), ok ? "{\"ok\":true,\"queued\":true}" : "{\"ok\":false,\"err\":\"busy\"}");
         return respond(c, ok ? 200 : 503, "application/json", (const uint8_t*)c->dyn, n);
@@ -214,17 +234,15 @@ inline void ap_start() {
     // The SDK gives the AP 192.168.4.1 by default; replace it with ours.
     netif* ap = &cyw43_state.netif[CYW43_ITF_AP];
     netif_set_addr(ap, ip_2_ip4(&gw), ip_2_ip4(&mask), ip_2_ip4(&gw));
-    dhcp_server_init(&dhcp, &gw, &mask);
-    printf("[WIFI] Panel: http://%s\n", ip4addr_ntoa(netif_ip4_addr(ap)));
+    printf("[WIFI] Panel: http://%s for %d min\n", ip4addr_ntoa(netif_ip4_addr(ap)), PANEL_WINDOW_MS / 60000);
     cyw43_arch_lwip_end();
     panel::wifi_active = true;
 }
 
 inline void ap_stop() {
-    printf("[WIFI] Stopping access point.\n");
+    printf("[WIFI] Stopping access point (radio off).\n");
     cyw43_arch_lwip_begin();
     for (auto& c : conns) conn_free(&c);
-    dhcp_server_deinit(&dhcp);
     cyw43_arch_lwip_end();
     cyw43_arch_disable_ap_mode();
     panel::wifi_active = false;
@@ -234,29 +252,67 @@ inline void init() {
     usb_changed_at = get_absolute_time();
     next_check = make_timeout_time_ms(250);
     start_http();
+    // One DHCP server for both the Wi-Fi access point and the USB network
+    // (same address 192.168.20.1, never active at the same time).
+    ip_addr_t gw, mask;
+    PANEL_IP4_ADDR(ip_2_ip4(&gw), PANEL_AP_IP);
+    IP4_ADDR(ip_2_ip4(&mask), 255, 255, 255, 0);
+    cyw43_arch_lwip_begin();
+    dhcp_server_init(&dhcp, &gw, &mask);
+    cyw43_arch_lwip_end();
 }
 
-// Decides whether the access point should run.
+// Decides whether Wi-Fi and the USB network panel are available.
 inline void tick() {
     if (!time_reached(next_check)) return;
     next_check = make_timeout_time_ms(250);
+    absolute_time_t now = get_absolute_time();
 
     bool usb = tud_mounted() && !tud_suspended();
     if (usb != usb_last) {
         usb_last = usb;
-        usb_changed_at = get_absolute_time();
+        usb_changed_at = now;
+        if (usb) {
+            usb_window_open = true;          // cable plugged in: new USB panel window
+            usb_since = now;
+            usb_panel_net_allow(true);
+        } else {
+            usb_window_open = false;
+            wifi_window_used = false;        // back on battery: new Wi-Fi window
+        }
     }
     panel::usb_host = usb;
-    int64_t stable_ms = absolute_time_diff_us(usb_changed_at, get_absolute_time()) / 1000;
+    int64_t stable_ms = absolute_time_diff_us(usb_changed_at, now) / 1000;
 
+    // USB network panel window
+    if (usb_window_open && window_left_ms(usb_since) <= 0) {
+        usb_window_open = false;
+        usb_panel_net_allow(false);
+        printf("[USB] Panel network closed after %d min without use. Replug the cable to open it again.\n",
+               PANEL_WINDOW_MS / 60000);
+    }
+    panel::usb_net_on = usb && usb_window_open;
+    panel::usb_left_s = panel::usb_net_on ? (int)(window_left_ms(usb_since) / 1000) : 0;
+
+    // Wi-Fi: only without a PC, once per battery session, for the time window
     bool want = panel::wifi_active;
-    if (panel::wifi_mode == panel::WIFI_ON) want = true;
-    else if (panel::wifi_mode == panel::WIFI_OFF) want = false;
-    else if (usb && stable_ms >= PANEL_USB_ON_MS) want = false;
-    else if (!usb && stable_ms >= PANEL_NO_USB_MS) want = true;
+    if (usb || panel::wifi_mode == panel::WIFI_OFF) {
+        want = false;
+    } else if (!panel::wifi_active) {
+        want = !wifi_window_used && stable_ms >= PANEL_NO_USB_MS;
+    } else if (window_left_ms(wifi_since) <= 0) {
+        want = false;
+        wifi_window_used = true;
+    }
 
-    if (want && !panel::wifi_active) ap_start();
-    else if (!want && panel::wifi_active) ap_stop();
+    if (want && !panel::wifi_active) {
+        wifi_since = now;
+        last_activity_us = 0;
+        ap_start();
+    } else if (!want && panel::wifi_active) {
+        ap_stop();
+    }
+    panel::wifi_left_s = panel::wifi_active ? (int)(window_left_ms(wifi_since) / 1000) : 0;
 }
 
 }  // namespace web

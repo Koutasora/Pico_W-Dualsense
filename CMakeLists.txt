@@ -18,7 +18,9 @@ add_compile_definitions(
 )
 
 add_subdirectory(lib/Gamepad-Core/Source)
-add_executable(dualsense_test src/main.cpp src/web/dhcpserver.c)
+add_executable(dualsense_test src/main.cpp src/web/dhcpserver.c
+        src/usb/usb_panel.c src/usb/usb_descriptors.c)
+target_sources(dualsense_test PRIVATE ${PICO_TINYUSB_PATH}/lib/networking/rndis_reports.c)
 
 # Panel page embedded into the firmware (served over Wi-Fi).
 set(PANEL_HTML ${CMAKE_CURRENT_SOURCE_DIR}/panel/panel.html)
@@ -37,6 +39,8 @@ target_include_directories(dualsense_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/web
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/usb
+        ${PICO_TINYUSB_PATH}/lib/networking
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
@@ -54,11 +58,16 @@ target_link_libraries(dualsense_test
         pico_cyw43_arch_lwip_threadsafe_background
         pico_btstack_cyw43
         hardware_gpio
+        hardware_watchdog
+        pico_unique_id
+        pico_usb_reset_interface_headers
+        tinyusb_device
         GamepadCore
 )
 
 # Configurações do Pico
-pico_enable_stdio_usb(dualsense_test 1)
+# USB is handled by src/usb (log + panel network + reset), not by pico_stdio_usb
+pico_enable_stdio_usb(dualsense_test 0)
 pico_enable_stdio_uart(dualsense_test 0)
 pico_add_extra_outputs(dualsense_test)
 

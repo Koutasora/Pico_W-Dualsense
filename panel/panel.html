@@ -220,10 +220,12 @@ pre#log { margin: 0; max-height: 260px; overflow: auto; font: 12px/1.4 ui-monosp
     </div>
     <div class="row">
       <label><input type="radio" name="wifi" value="auto"> <span data-t="wifiAuto">Auto</span></label>
-      <label><input type="radio" name="wifi" value="on"> <span data-t="wifiOn">Always on</span></label>
       <label><input type="radio" name="wifi" value="off"> <span data-t="wifiOff">Off</span></label>
     </div>
-    <div class="muted" data-t="wifiNote">Auto: Wi-Fi only when no PC is connected over USB.</div>
+    <div class="kv">
+      <span data-t="lblUsbPanel">USB panel</span><span id="usbNow">-</span>
+    </div>
+    <div class="muted" data-t="wifiNote">Auto: on battery, Wi-Fi runs for 5 minutes from the last use, then the radio turns off until Pico restarts.</div>
   </section>
 
   <section class="wide hidden" id="logBox">
@@ -249,8 +251,9 @@ const T = {
     gyro: "Gyro °/s", accel: "Accel g", calib: "Zero gyro", calibReset: "Reset",
     secRumble: "Rumble", left: "Left", right: "Right", duration: "Duration", test: "Test",
     secTriggers: "Adaptive triggers", trigOff: "Turn both off", start: "Start", force: "Force",
-    lblNetwork: "Network", lblNow: "Now", wifiAuto: "Auto", wifiOn: "Always on", wifiOff: "Off",
-    wifiNote: "Auto: Wi-Fi only when no PC is connected over USB.",
+    lblNetwork: "Network", lblNow: "Now", wifiAuto: "Auto", wifiOff: "Off", lblUsbPanel: "USB panel",
+    wifiNote: "Auto: on battery, Wi-Fi runs for 5 minutes from the last use, then the radio turns off until Pico restarts.",
+    left: "left", usbOff: "closed, replug the cable", noPc: "no PC",
     st_connected: "connected", st_searching: "searching (hold PS + Create)", st_waiting: "waiting for the controller (press PS)",
     st_idle: "not searching", none: "none", on: "on", offW: "off",
     picoOffline: "No connection to Pico", viaUsb: "USB", viaWifi: "Wi-Fi",
@@ -275,8 +278,9 @@ const T = {
     gyro: "Żyroskop °/s", accel: "Akcelerometr g", calib: "Zeruj żyroskop", calibReset: "Przywróć",
     secRumble: "Wibracje", left: "Lewa", right: "Prawa", duration: "Czas", test: "Testuj",
     secTriggers: "Triggery", trigOff: "Wyłącz oba", start: "Początek", force: "Siła",
-    lblNetwork: "Sieć", lblNow: "Teraz", wifiAuto: "Auto", wifiOn: "Zawsze", wifiOff: "Wyłączone",
-    wifiNote: "Auto: Wi-Fi tylko wtedy, gdy Pico nie jest podłączone do PC.",
+    lblNetwork: "Sieć", lblNow: "Teraz", wifiAuto: "Auto", wifiOff: "Wyłączone", lblUsbPanel: "Panel przez USB",
+    wifiNote: "Auto: na baterii Wi-Fi działa 5 minut od ostatniego użycia, potem radio się wyłącza do restartu Pico.",
+    left: "zostało", usbOff: "zamknięty, podłącz kabel ponownie", noPc: "brak PC",
     st_connected: "połączony", st_searching: "szuka (przytrzymaj PS + Create)", st_waiting: "czeka na pada (wciśnij PS)",
     st_idle: "nie szuka", none: "brak", on: "włączone", offW: "wyłączone",
     picoOffline: "Brak połączenia z Pico", viaUsb: "USB", viaWifi: "Wi-Fi",
@@ -492,7 +496,7 @@ let firstState = true;
 function fmt(v, d) { return (v >= 0 ? " " : "") + v.toFixed(d); }
 function render(forceWifi) {
   const s = state;
-  const via = viaHttp ? t("viaWifi") : t("viaUsb");
+  const via = viaHttp && state && state.wifi && state.wifi.on ? t("viaWifi") : t("viaUsb");
   if (!online || !s) {
     $("topStatus").textContent = t("picoOffline");
   } else {
@@ -550,7 +554,10 @@ function render(forceWifi) {
 
   // wifi
   $("ssid").textContent = s.wifi.ssid;
-  $("wifiNow").textContent = s.wifi.on ? t("on") + " · " + (s.wifi.ip || "") : t("offW");
+  const mmss = sec => Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+  $("wifiNow").textContent = s.wifi.on ? `${t("on")} · ${s.wifi.ip} · ${t("left")} ${mmss(s.wifi.left)}` : t("offW");
+  const un = s.usbnet || { on: 0, left: 0 };
+  $("usbNow").textContent = !s.usb ? t("noPc") : un.on ? `${t("on")} · ${s.wifi.ip} · ${t("left")} ${mmss(un.left)}` : t("usbOff");
   document.querySelectorAll("input[name=wifi]").forEach(r => r.checked = r.value === s.wifi.mode);
 
   if (firstState) {

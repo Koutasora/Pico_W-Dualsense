@@ -283,8 +283,8 @@ static void dhcp_server_process(void *arg, struct udp_pcb *upcb, struct pbuf *p,
 
     opt_write_n(&opt, DHCP_OPT_SERVER_ID, 4, &ip4_addr_get_u32(ip_2_ip4(&d->ip)));
     opt_write_n(&opt, DHCP_OPT_SUBNET_MASK, 4, &ip4_addr_get_u32(ip_2_ip4(&d->nm)));
-    opt_write_n(&opt, DHCP_OPT_ROUTER, 4, &ip4_addr_get_u32(ip_2_ip4(&d->ip))); // aka gateway; can have multiple addresses
-    opt_write_n(&opt, DHCP_OPT_DNS, 4, &ip4_addr_get_u32(ip_2_ip4(&d->ip))); // this server is the dns
+    // No router / DNS options: Pico is not a gateway. Without them the PC (USB)
+    // and the phone (Wi-Fi) keep using their normal internet connection.
     opt_write_u32(&opt, DHCP_OPT_IP_LEASE_TIME, DEFAULT_LEASE_TIME_S);
     *opt++ = DHCP_OPT_END;
     struct netif *nif = ip_current_input_netif();
