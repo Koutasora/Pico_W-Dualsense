@@ -17,5 +17,8 @@
 // USB network stops answering. Power-cycle / replug to open it again.
 #define PANEL_WINDOW_MS   (5 * 60 * 1000)
 
+// Live view: state snapshot / push interval for the panel (ms).
+#define PANEL_STREAM_MS   20
+
 // On battery, Wi-Fi starts after this long without a PC on USB.
 #define PANEL_NO_USB_MS   4000

@@ -70,22 +70,22 @@ int main() {
                 if (auto* touch = gamepad->GetIGamepadTouch()) {
                     touch->EnableTouch(true);
                 }
-                gamepad->UpdateInput(0.016f);
+                gamepad->UpdateInput(0.008f);
             }
         }
 
         // Pico LED blinks while the firmware runs
-        if (blink_cnt++ % 50 == 0) {
+        if (blink_cnt++ % 100 == 0) {
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
         }
-        if (blink_cnt % 50 == 25) {
+        if (blink_cnt % 100 == 50) {
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
         }
 
         panel::tick();
         web::tick();
 
-        sleep_ms(16);
+        sleep_ms(8);   // ~125 Hz: pad input and panel stay responsive
     }
     return 0;
 }

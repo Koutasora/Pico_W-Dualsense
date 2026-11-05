@@ -59,6 +59,7 @@ struct Conn {
     const uint8_t* body;     // static body (panel page) or dyn
     size_t body_len;
     size_t body_sent;
+    bool stream;             // /api/stream: stays open, state pushed as Server-Sent Events
     char dyn[1200];
 };
 static Conn conns[MAX_CONN];
@@ -101,7 +102,7 @@ inline void conn_pump(Conn* c) {
         }
     }
     tcp_output(c->pcb);
-    if (c->head_sent == c->head_len && c->body_sent == c->body_len) conn_free(c);
+    if (!c->stream && c->head_sent == c->head_len && c->body_sent == c->body_len) conn_free(c);
 }
 
 inline int hexval(char ch) {
@@ -148,6 +149,18 @@ inline void handle_request(Conn* c) {
     if (!strcmp(path, "/") || !strcmp(path, "/index.html")) {
         last_activity_us = to_us_since_boot(get_absolute_time());
         return respond(c, 200, "text/html; charset=utf-8", panel_html, panel_html_len);
+    }
+    if (!strcmp(path, "/api/stream")) {
+        // Live state pushed by push_streams(); does not keep the panel window open.
+        c->stream = true;
+        c->head_len = snprintf(c->head, sizeof(c->head),
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+            "Cache-Control: no-store\r\nConnection: keep-alive\r\n\r\n");
+        c->head_sent = 0;
+        c->body = nullptr;
+        c->body_len = c->body_sent = 0;
+        conn_pump(c);
+        return;
     }
     if (!strcmp(path, "/api/state")) {
         size_t n = panel::copy_state(c->dyn, sizeof(c->dyn));
@@ -262,8 +275,34 @@ inline void init() {
     cyw43_arch_lwip_end();
 }
 
+// Sends the current state to every open /api/stream connection (~50 per second).
+// A frame is skipped when the previous ones are still queued, so delay never builds up.
+static absolute_time_t next_push;
+inline void push_streams() {
+    if (!time_reached(next_push)) return;
+    next_push = make_timeout_time_ms(PANEL_STREAM_MS);
+    bool any = false;
+    for (auto& c : conns) any |= c.used && c.stream;
+    if (!any) return;
+
+    static char frame[1220];
+    memcpy(frame, "data: ", 6);
+    size_t n = 6 + panel::copy_state(frame + 6, sizeof(frame) - 9);
+    frame[n++] = '\n';
+    frame[n++] = '\n';
+
+    cyw43_arch_lwip_begin();
+    for (auto& c : conns) {
+        if (!c.used || !c.stream || !c.pcb || c.head_sent != c.head_len) continue;
+        if (tcp_sndqueuelen(c.pcb) > 4 || tcp_sndbuf(c.pcb) < n) continue;   // client is behind: skip this frame
+        if (tcp_write(c.pcb, frame, (u16_t)n, TCP_WRITE_FLAG_COPY) == ERR_OK) tcp_output(c.pcb);
+    }
+    cyw43_arch_lwip_end();
+}
+
 // Decides whether Wi-Fi and the USB network panel are available.
 inline void tick() {
+    push_streams();
     if (!time_reached(next_check)) return;
     next_check = make_timeout_time_ms(250);
     absolute_time_t now = get_absolute_time();

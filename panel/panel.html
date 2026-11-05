@@ -336,14 +336,31 @@ async function send(cmd) {
   }
 }
 
-async function poll() {
-  try {
-    const r = await fetch("/api/state", { cache: "no-store" });
-    state = await r.json(); online = true;
-  } catch (e) { online = false; }
-  render();
-  setTimeout(poll, online ? 120 : 1000);
+// Draw at most once per screen frame, always with the newest state.
+let renderQueued = false;
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
 }
+
+// Pico pushes the state ~50 times per second over one connection (Server-Sent Events).
+let es = null, lastMsg = 0;
+function startStream() {
+  if (es) es.close();
+  es = new EventSource("/api/stream");
+  es.onmessage = e => {
+    try { state = JSON.parse(e.data); online = true; lastMsg = performance.now(); scheduleRender(); } catch (err) {}
+  };
+  es.onerror = () => { online = false; scheduleRender(); };   // EventSource reconnects by itself
+}
+// Watchdog: no data for 2 s -> show offline and reconnect.
+setInterval(() => {
+  if (!viaHttp) return;
+  if (performance.now() - lastMsg > 2000) { online = false; scheduleRender(); startStream(); }
+}, 2000);
+
+async function poll() { startStream(); }
 
 const logLines = [];
 function addLog(line) {
@@ -380,7 +397,7 @@ async function readLoop() {
       while ((i = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, i).replace(/\r$/, "");
         buf = buf.slice(i + 1);
-        if (line.startsWith("@S ")) { try { state = JSON.parse(line.slice(3)); render(); } catch (e) {} }
+        if (line.startsWith("@S ")) { try { state = JSON.parse(line.slice(3)); scheduleRender(); } catch (e) {} }
         else if (line.startsWith("@R ")) { try { const j = JSON.parse(line.slice(3)); if (!j.ok) showErr(j.err); } catch (e) {} }
         else if (line.length) addLog(line);
       }

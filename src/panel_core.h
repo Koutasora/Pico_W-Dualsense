@@ -326,7 +326,7 @@ inline void handle_serial_line(const char* line) {
 
 inline void init() {
     critical_section_init(&cs);
-    next_state = make_timeout_time_ms(50);
+    next_state = make_timeout_time_ms(PANEL_STREAM_MS);
     build_state();
 }
 
@@ -413,9 +413,9 @@ inline void tick() {
         }
     }
 
-    // State snapshot + serial stream (20 Hz)
+    // State snapshot + serial stream (every PANEL_STREAM_MS)
     if (time_reached(next_state)) {
-        next_state = make_timeout_time_ms(50);
+        next_state = make_timeout_time_ms(PANEL_STREAM_MS);
         build_state();
         if (stream_enabled) {
             if (!tud_cdc_connected()) {
