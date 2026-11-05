@@ -154,7 +154,7 @@ inline void build_state() {
         "\"tp\":[%d,%.0f,%.0f],\"gy\":[%.2f,%.2f,%.2f],\"ac\":[%.3f,%.3f,%.3f],"
         "\"mo\":%d,\"cal\":{\"f\":%d,\"st\":\"%s\",\"off\":[%.1f,%.1f,%.1f]},"
         "\"light\":[%u,%u,%u],\"pl\":[%u,%u],\"tr\":[\"%s\",\"%s\"],"
-        "\"wifi\":{\"mode\":\"%s\",\"on\":%d,\"ssid\":\"%s\"},\"usb\":%d}",
+        "\"wifi\":{\"mode\":\"%s\",\"on\":%d,\"ssid\":\"%s\",\"ip\":\"" PANEL_AP_IP_STR "\"},\"usb\":%d}",
         PANEL_FW_VERSION, bt, mac, bat, (unsigned long)b,
         lx, ly, rx, ry, l2, r2,
         touch, tx, ty, gx, gy, gz, ax, ay, az,

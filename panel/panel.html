@@ -54,15 +54,20 @@ label { display: inline-flex; gap: 6px; align-items: center; }
 .muted { color: var(--muted); font-size: 14px; }
 .msg { min-height: 20px; font-size: 14px; color: var(--muted); }
 .msg.err { color: var(--danger); }
-.live { display: grid; grid-template-columns: auto auto 1fr; gap: 16px; align-items: start; }
-@media (max-width: 560px) { .live { grid-template-columns: 1fr 1fr; } .live .btns { grid-column: 1 / -1; } }
-svg text { fill: var(--muted); font-size: 11px; }
-.btns { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
-.btns div { border: 1px solid var(--line); border-radius: 6px; text-align: center; padding: 5px 2px; font-size: 13px; }
-.btns div.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-.bars { display: grid; grid-template-columns: 28px 1fr 44px; gap: 8px; align-items: center; margin-top: 12px; }
-.bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
-.bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+#pad { display: block; width: 100%; max-width: 620px; margin: 0 auto; }
+#pad .body { fill: var(--field); stroke: var(--line); stroke-width: 2; }
+#pad .base { fill: none; stroke: var(--line); stroke-width: 2; }
+#pad .k { fill: var(--card); stroke: var(--muted); stroke-width: 1.5; }
+#pad .on .k { fill: var(--accent); stroke: var(--accent); }
+#pad .sym { fill: none; stroke: var(--muted); stroke-width: 2; }
+#pad .on .sym { stroke: var(--accent-text); }
+#pad .fill { fill: var(--accent); opacity: .55; pointer-events: none; }
+#pad .dot { fill: var(--accent); }
+#pad .lbl { fill: var(--muted); font-size: 12px; font-weight: 600; pointer-events: none; }
+#pad #pled circle { fill: var(--line); }
+#pad #pled circle.lit { fill: var(--text); }
+#pad #lb1, #pad #lb2 { fill: var(--line); }
+.readout { display: flex; flex-wrap: wrap; gap: 6px 20px; justify-content: center; margin-top: 10px; font-size: 14px; }
 .num { font-variant-numeric: tabular-nums; }
 table.motion { border-collapse: collapse; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
 table.motion td, table.motion th { padding: 3px 14px 3px 0; text-align: right; }
@@ -140,26 +145,61 @@ pre#log { margin: 0; max-height: 260px; overflow: auto; font: 12px/1.4 ui-monosp
 
   <section class="wide">
     <h2 data-t="secLive">Live input</h2>
-    <div class="live">
-      <svg id="sticks" width="200" height="104" viewBox="0 0 200 104" aria-hidden="true">
-        <circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" stroke-opacity=".25"/>
-        <circle cx="150" cy="50" r="44" fill="none" stroke="currentColor" stroke-opacity=".25"/>
-        <line x1="50" y1="6" x2="50" y2="94" stroke="currentColor" stroke-opacity=".12"/>
-        <line x1="6" y1="50" x2="94" y2="50" stroke="currentColor" stroke-opacity=".12"/>
-        <line x1="150" y1="6" x2="150" y2="94" stroke="currentColor" stroke-opacity=".12"/>
-        <line x1="106" y1="50" x2="194" y2="50" stroke="currentColor" stroke-opacity=".12"/>
-        <circle id="ls" cx="50" cy="50" r="7" fill="var(--accent)"/>
-        <circle id="rs" cx="150" cy="50" r="7" fill="var(--accent)"/>
-      </svg>
-      <svg id="touch" width="168" height="94" viewBox="0 0 168 94" aria-hidden="true">
-        <rect x="1" y="1" width="166" height="92" rx="8" fill="none" stroke="currentColor" stroke-opacity=".25"/>
-        <circle id="tp" cx="84" cy="47" r="7" fill="var(--accent)" class="hidden"/>
-      </svg>
-      <div class="btns" id="btns"></div>
-    </div>
-    <div class="bars">
-      <span>L2</span><div class="bar"><i id="l2bar"></i></div><span class="num" id="l2val">0%</span>
-      <span>R2</span><div class="bar"><i id="r2bar"></i></div><span class="num" id="r2val">0%</span>
+    <svg id="pad" viewBox="0 0 600 385" role="img" aria-label="DualSense">
+      <defs>
+        <clipPath id="clipL2"><rect x="95" y="6" width="100" height="26" rx="10"/></clipPath>
+        <clipPath id="clipR2"><rect x="405" y="6" width="100" height="26" rx="10"/></clipPath>
+      </defs>
+      <!-- triggers and bumpers -->
+      <g id="k6"><rect class="k" x="95" y="6" width="100" height="26" rx="10"/></g>
+      <rect id="l2f" class="fill" x="95" y="6" width="0" height="26" clip-path="url(#clipL2)"/>
+      <g id="k7"><rect class="k" x="405" y="6" width="100" height="26" rx="10"/></g>
+      <rect id="r2f" class="fill" x="405" y="6" width="0" height="26" clip-path="url(#clipR2)"/>
+      <text x="145" y="24" text-anchor="middle" class="lbl">L2</text>
+      <text x="455" y="24" text-anchor="middle" class="lbl">R2</text>
+      <g id="k4"><rect class="k" x="90" y="38" width="110" height="14" rx="7"/></g>
+      <g id="k5"><rect class="k" x="400" y="38" width="110" height="14" rx="7"/></g>
+      <!-- body -->
+      <path class="body" d="M300 62 C360 62 400 58 440 52 C500 44 545 70 560 120 C585 200 600 300 585 345
+        C572 380 520 380 500 350 C470 305 445 270 410 262 C360 252 240 252 190 262 C155 270 130 305 100 350
+        C80 380 28 380 15 345 C0 300 15 200 40 120 C55 70 100 44 160 52 C200 58 240 62 300 62 Z"/>
+      <!-- lightbar + touchpad -->
+      <rect id="lb1" x="203" y="72" width="7" height="80" rx="3.5"/>
+      <rect id="lb2" x="390" y="72" width="7" height="80" rx="3.5"/>
+      <g id="k13"><rect class="k" x="215" y="66" width="170" height="92" rx="10"/></g>
+      <circle id="tp" class="dot hidden" cx="300" cy="112" r="7"/>
+      <g id="pled">
+        <circle cx="280" cy="172" r="3.2"/><circle cx="290" cy="172" r="3.2"/><circle cx="300" cy="172" r="3.2"/>
+        <circle cx="310" cy="172" r="3.2"/><circle cx="320" cy="172" r="3.2"/>
+      </g>
+      <!-- create / options -->
+      <g id="k8"><rect class="k" x="180" y="78" width="12" height="28" rx="6"/></g>
+      <g id="k9"><rect class="k" x="408" y="78" width="12" height="28" rx="6"/></g>
+      <!-- d-pad -->
+      <g id="k15"><path class="k" d="M128 130 h24 v22 l-12 10 l-12 -10 Z"/></g>
+      <g id="k16"><path class="k" d="M128 210 h24 v-22 l-12 -10 l-12 10 Z"/></g>
+      <g id="k17"><path class="k" d="M100 158 v24 h22 l10 -12 l-10 -12 Z"/></g>
+      <g id="k18"><path class="k" d="M180 158 v24 h-22 l-10 -12 l10 -12 Z"/></g>
+      <!-- face buttons -->
+      <g id="k3"><circle class="k" cx="460" cy="134" r="17"/><path class="sym" d="M460 125 l9 15 h-18 Z"/></g>
+      <g id="k1"><circle class="k" cx="496" cy="170" r="17"/><circle class="sym" cx="496" cy="170" r="8"/></g>
+      <g id="k0"><circle class="k" cx="460" cy="206" r="17"/><path class="sym" d="M453 199 l14 14 M467 199 l-14 14"/></g>
+      <g id="k2"><circle class="k" cx="424" cy="170" r="17"/><rect class="sym" x="417" y="163" width="14" height="14"/></g>
+      <!-- sticks -->
+      <circle class="base" cx="215" cy="245" r="34"/>
+      <circle class="base" cx="385" cy="245" r="34"/>
+      <g id="k10"><circle id="ls" class="k" cx="215" cy="245" r="22"/></g>
+      <g id="k11"><circle id="rs" class="k" cx="385" cy="245" r="22"/></g>
+      <!-- PS / mute -->
+      <g id="k12"><circle class="k" cx="300" cy="238" r="11"/></g>
+      <g id="k14"><rect class="k" x="289" y="264" width="22" height="7" rx="3.5"/></g>
+    </svg>
+    <div class="readout">
+      <span>L <span class="num" id="lsv">0.00 0.00</span></span>
+      <span>R <span class="num" id="rsv">0.00 0.00</span></span>
+      <span>L2 <span class="num" id="l2val">0%</span></span>
+      <span>R2 <span class="num" id="r2val">0%</span></span>
+      <span id="pressed" class="muted"></span>
     </div>
   </section>
 
@@ -283,7 +323,7 @@ function applyLang() {
   lang = pref === "auto" ? ((navigator.language || "en").toLowerCase().startsWith("pl") ? "pl" : "en") : pref;
   document.documentElement.lang = lang;
   document.querySelectorAll("[data-t]").forEach(el => el.textContent = t(el.dataset.t));
-  buildButtons(); buildTriggers(); render();
+  buildTriggers(); render();
 }
 function applyTheme() {
   const v = store.get("theme", "auto");
@@ -382,15 +422,6 @@ $("btnUsb").onclick = async () => {
 
 // ---------- UI pieces ----------
 const BTN_COUNT = 19;
-function buildButtons() {
-  const box = $("btns");
-  box.innerHTML = "";
-  for (let i = 0; i < BTN_COUNT; i++) {
-    const d = document.createElement("div");
-    d.textContent = t("b")[i];
-    box.appendChild(d);
-  }
-}
 
 const MODES = ["off", "res", "gamecube", "feedback", "bow", "gallop", "weapon", "autogun", "machine"];
 function buildTriggers() {
@@ -499,22 +530,34 @@ function render(forceWifi) {
   $("btnPair").disabled = !online || conn || s.bt === "searching";
   $("btnDisc").disabled = !online || !conn;
 
-  // live input
-  const R = 37;
-  $("ls").setAttribute("cx", 50 + s.ls[0] * R); $("ls").setAttribute("cy", 50 - s.ls[1] * R);
-  $("rs").setAttribute("cx", 150 + s.rs[0] * R); $("rs").setAttribute("cy", 50 - s.rs[1] * R);
+  // live input: controller drawing
+  const pressed = [];
+  for (let i = 0; i < BTN_COUNT; i++) {
+    const on = !!(s.b & (1 << i));
+    $("k" + i).classList.toggle("on", on);
+    if (on) pressed.push(t("b")[i]);
+  }
+  $("pressed").textContent = pressed.join(", ");
+  const R = 12;
+  $("ls").setAttribute("cx", 215 + s.ls[0] * R); $("ls").setAttribute("cy", 245 - s.ls[1] * R);
+  $("rs").setAttribute("cx", 385 + s.rs[0] * R); $("rs").setAttribute("cy", 245 - s.rs[1] * R);
+  $("lsv").textContent = fmt(s.ls[0], 2) + " " + fmt(s.ls[1], 2);
+  $("rsv").textContent = fmt(s.rs[0], 2) + " " + fmt(s.rs[1], 2);
+  [["l2", s.l2], ["r2", s.r2]].forEach(([k, v]) => {
+    const p = Math.max(0, Math.min(1, v));
+    $(k + "f").setAttribute("width", 100 * p);
+    $(k + "val").textContent = Math.round(p * 100) + "%";
+  });
   const tp = $("tp");
   if (s.tp[0] > 0) {
     tp.classList.remove("hidden");
-    tp.setAttribute("cx", 8 + Math.min(1, s.tp[1] / 1920) * 152);
-    tp.setAttribute("cy", 8 + Math.min(1, s.tp[2] / 1080) * 78);
+    tp.setAttribute("cx", 222 + Math.min(1, s.tp[1] / 1920) * 156);
+    tp.setAttribute("cy", 73 + Math.min(1, s.tp[2] / 1080) * 78);
   } else tp.classList.add("hidden");
-  const cells = $("btns").children;
-  for (let i = 0; i < cells.length; i++) cells[i].classList.toggle("on", !!(s.b & (1 << i)));
-  [["l2", s.l2], ["r2", s.r2]].forEach(([k, v]) => {
-    const p = Math.round(Math.max(0, Math.min(1, v)) * 100);
-    $(k + "bar").style.width = p + "%"; $(k + "val").textContent = p + "%";
-  });
+  const lbColor = conn ? `rgb(${s.light[0]},${s.light[1]},${s.light[2]})` : "";
+  $("lb1").style.fill = lbColor; $("lb2").style.fill = lbColor;
+  const leds = $("pled").children;
+  for (let i = 0; i < 5; i++) leds[i].classList.toggle("lit", conn && !!(s.pl[0] & (1 << i)));
 
   // motion
   $("motion").checked = !!s.mo;
@@ -526,7 +569,7 @@ function render(forceWifi) {
 
   // wifi
   $("ssid").textContent = s.wifi.ssid;
-  $("wifiNow").textContent = s.wifi.on ? t("on") + " · 192.168.4.1" : t("offW");
+  $("wifiNow").textContent = s.wifi.on ? t("on") + " · " + (s.wifi.ip || "") : t("offW");
   document.querySelectorAll("input[name=wifi]").forEach(r => r.checked = r.value === s.wifi.mode);
 
   if (firstState) {

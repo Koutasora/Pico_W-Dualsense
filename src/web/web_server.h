@@ -12,6 +12,7 @@
 #include "pico/cyw43_arch.h"
 #include "lwip/tcp.h"
 #include "lwip/ip_addr.h"
+#include "lwip/netif.h"
 #include "tusb.h"
 
 #include "panel_config.h"
@@ -206,13 +207,17 @@ inline void ap_start() {
     printf("[WIFI] Starting access point \"%s\"...\n", PANEL_AP_SSID);
     cyw43_arch_enable_ap_mode(PANEL_AP_SSID, PANEL_AP_PASSWORD, CYW43_AUTH_WPA2_AES_PSK);
     ip_addr_t gw, mask;
-    IP4_ADDR(ip_2_ip4(&gw), 192, 168, 4, 1);
+#define PANEL_IP4_ADDR(dst, ...) IP4_ADDR(dst, __VA_ARGS__)   // expands PANEL_AP_IP first
+    PANEL_IP4_ADDR(ip_2_ip4(&gw), PANEL_AP_IP);
     IP4_ADDR(ip_2_ip4(&mask), 255, 255, 255, 0);
     cyw43_arch_lwip_begin();
+    // The SDK gives the AP 192.168.4.1 by default; replace it with ours.
+    netif* ap = &cyw43_state.netif[CYW43_ITF_AP];
+    netif_set_addr(ap, ip_2_ip4(&gw), ip_2_ip4(&mask), ip_2_ip4(&gw));
     dhcp_server_init(&dhcp, &gw, &mask);
+    printf("[WIFI] Panel: http://%s\n", ip4addr_ntoa(netif_ip4_addr(ap)));
     cyw43_arch_lwip_end();
     panel::wifi_active = true;
-    printf("[WIFI] Panel: http://192.168.4.1\n");
 }
 
 inline void ap_stop() {

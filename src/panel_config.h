@@ -6,6 +6,8 @@
 // Wi-Fi access point started when no PC is connected over USB.
 #define PANEL_AP_SSID     "DualSense-Pico"
 #define PANEL_AP_PASSWORD "dualsense"   // WPA2, at least 8 characters
+#define PANEL_AP_IP       192, 168, 20, 1
+#define PANEL_AP_IP_STR   "192.168.20.1"
 
 // Auto mode: Wi-Fi turns on after this long without a USB host,
 // and off after the USB host has been present for PANEL_USB_ON_MS.
