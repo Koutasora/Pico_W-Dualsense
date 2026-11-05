@@ -519,7 +519,7 @@ function render(forceWifi) {
   } else {
     const st = t("st_" + s.bt);
     const bat = s.bt === "connected" && s.bat >= 0 ? ` · ${t("lblBattery").toLowerCase()} ${s.bat}%` : "";
-    $("topStatus").innerHTML = `Pico: <b>${via}</b> · ${t("secController").toLowerCase()}: <b>${st}</b>${bat}`;
+    $("topStatus").innerHTML = `Pico: <b>${via}</b> · ${t("secController").toLowerCase()}: <b>${st}</b>${bat} · firmware ${s.v}`;
   }
   const conn = !!(s && s.bt === "connected");
   document.querySelectorAll("main button").forEach(b => { if (b.id !== "btnUsb") b.disabled = !online; });
