@@ -29,6 +29,20 @@ static uint8_t auth_failure_count = 0;   // Consecutive failures counter
 static btstack_packet_callback_registration_t hci_event_callback;
 static btstack_packet_callback_registration_t l2cap_event_callback;
 
+// Added for the panel: ACL handle (for disconnect), inquiry state and
+// whether the factory calibration was read from the controller.
+static hci_con_handle_t acl_handle = HCI_CON_HANDLE_INVALID;
+static bool inquiry_active = false;
+static bool factory_calibration_loaded = false;
+
+// Defined in panel_core.h: adds the user's gyro offset on top of the factory calibration.
+static void panel_apply_user_calibration(FGamepadCalibration& Calibration);
+
+inline void bt_inquiry_start() {
+    inquiry_active = true;
+    gap_inquiry_start(30);
+}
+
 // Helper: check if link key is valid (non-zero)
 inline bool is_link_key_valid(const uint8_t *key) {
     for (int i = 0; i < 16; i++) {
@@ -57,12 +71,31 @@ inline void start_pairing_inquiry() {
     is_pairing = true;
     we_initiated_connection = true;
     gap_connectable_control(1);
-    gap_inquiry_start(30);
+    bt_inquiry_start();
 }
 
 inline void l2cap_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) {
     if (packet_type == L2CAP_DATA_PACKET) {
         using namespace policy_device;
+
+        // Replies on the HID control channel are not input reports.
+        // 0xA3 0x05 = answer to GET_REPORT feature 0x05 (sensor calibration).
+        if (channel == l2cap_cid_control) {
+            if (size >= 36 && packet[0] == 0xA3 && packet[1] == 0x05) {
+                auto& registry = get_instance();
+                if (IGamepadBase* gamepad = registry.GetLibrary(0)) {
+                    FDeviceContext* context = gamepad->GetMutableDeviceContext();
+                    FGamepadCalibration Calibration;
+                    FGamepadSensors::DualSenseCalibrationSensors(&packet[1], Calibration, context);
+                    panel_apply_user_calibration(Calibration);
+                    context->Calibration = Calibration;
+                    factory_calibration_loaded = true;
+                    printf("[CAL] Factory calibration loaded.\n");
+                }
+            }
+            return;
+        }
+
         if (size > 11 && response_report == 0) {
             response_report = 1;
 
@@ -118,18 +151,8 @@ inline void l2cap_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t 
                     0x43,
                     0x05
                 };
+                // The reply (0xA3 0x05 ...) is handled at the top of this function.
                 l2cap_send(l2cap_cid_control, get_feature, 41);
-
-                using namespace policy_device;
-                auto& registry = get_instance();
-                if (IGamepadBase* gamepad = registry.GetLibrary(0)) {
-                    FDeviceContext* context = gamepad->GetMutableDeviceContext();
-                    using namespace FGamepadSensors;
-                    FGamepadCalibration OutCalibration;
-                    DualSenseCalibrationSensors(get_feature, OutCalibration);
-
-                    context->Calibration = OutCalibration;
-                }
             }
             break;
         }
@@ -232,6 +255,7 @@ inline void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
         }
 
         case GAP_EVENT_INQUIRY_COMPLETE:
+            inquiry_active = false;
             printf("[HCI] Search completed.\n");
             if (device_found) {
                 device_found = false;
@@ -267,6 +291,7 @@ inline void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
 
             if (status == ERROR_CODE_SUCCESS) {
                 hci_con_handle_t handle = hci_event_connection_complete_get_connection_handle(packet);
+                acl_handle = handle;
                 printf("[HCI] ACL Connection established with %s (handle: 0x%04x)\n", bd_addr_to_str(addr), handle);
                 printf("[HCI] Initiator: %s\n", we_initiated_connection ? "WE" : "CONTROLLER");
                 bd_addr_copy(current_device_addr, addr);
@@ -390,6 +415,8 @@ inline void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
                 FDeviceContext* context = gamepad->GetMutableDeviceContext();
                 context->IsConnected = false;
             }
+            acl_handle = HCI_CON_HANDLE_INVALID;
+            factory_calibration_loaded = false;
             uint8_t reason = packet[5];
             printf("[HCI] Disconnected. Reason: 0x%02x\n", reason);
             printf("[BT] Starting search for new devices...\n");
@@ -399,7 +426,7 @@ inline void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
             printf("  Light should blink rapidly\n");
             is_pairing = true;
             we_initiated_connection = true;
-            gap_inquiry_start(30);
+            bt_inquiry_start();
             reset_connection_state();
             break;
         }
@@ -465,7 +492,7 @@ inline void enable_discovery() {
         printf("  Light should blink rapidly\n");
         is_pairing = true;
         we_initiated_connection = true;
-        gap_inquiry_start(30);
+        bt_inquiry_start();
     }
 }
 

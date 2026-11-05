@@ -18,11 +18,26 @@ add_compile_definitions(
 )
 
 add_subdirectory(lib/Gamepad-Core/Source)
-add_executable(dualsense_test src/main.cpp)
+add_executable(dualsense_test src/main.cpp src/web/dhcpserver.c)
+
+# Panel page embedded into the firmware (served over Wi-Fi).
+set(PANEL_HTML ${CMAKE_CURRENT_SOURCE_DIR}/panel/panel.html)
+set(PANEL_HTML_H ${CMAKE_CURRENT_BINARY_DIR}/generated/panel_html.h)
+add_custom_command(
+        OUTPUT ${PANEL_HTML_H}
+        COMMAND ${CMAKE_COMMAND} -DIN=${PANEL_HTML} -DOUT=${PANEL_HTML_H} -DNAME=panel_html
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_file.cmake
+        DEPENDS ${PANEL_HTML} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_file.cmake
+        COMMENT "Embedding panel.html"
+)
+add_custom_target(panel_html_gen DEPENDS ${PANEL_HTML_H})
+add_dependencies(dualsense_test panel_html_gen)
 
 target_include_directories(dualsense_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/web
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
 target_include_directories(GamepadCore PRIVATE
@@ -36,7 +51,7 @@ target_link_libraries(GamepadCore PUBLIC pico_stdlib)
 target_link_libraries(dualsense_test
         pico_stdlib
         pico_btstack_classic
-        pico_cyw43_arch_none
+        pico_cyw43_arch_lwip_threadsafe_background
         pico_btstack_cyw43
         hardware_gpio
         GamepadCore

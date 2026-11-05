@@ -9,6 +9,8 @@
 #include "GCore/Interfaces/IPlatformHardware.h"
 #include "GCore/Templates/TBasicDeviceRegistry.h"
 #include "pico_w_platform.h"
+#include "panel_core.h"
+#include "web/web_server.h"
 using pico_platform = GamepadCore::TGenericHardwareInfo<pico_w_platform_policy>;
 
 inline void initialize_device() {
@@ -71,6 +73,10 @@ int main() {
     init_bluetooth();
     printf("Bluetooth initialized OK\n");
 
+    panel::init();
+    web::init();
+    printf("Panel initialized OK (%s)\n", PANEL_FW_VERSION);
+
     std::vector<uint8_t> BufferTrigger;
     BufferTrigger.resize(10);
 
@@ -83,7 +89,7 @@ int main() {
             if (gamepad->IsConnected()) {
                 // enable touchpad and sensors, gyro and accelerometer, can be used to control mouse cursor or for motion controls in games
                 if (auto* sensors = gamepad->GetIGamepadSensors()) {
-                    sensors->EnableMotionSensor(false);
+                    sensors->EnableMotionSensor(panel::motion_enabled);
                 }
 
                 if (auto* touch = gamepad->GetIGamepadTouch()) {
@@ -330,6 +336,9 @@ int main() {
         if (blink_cnt % 50 == 25) {
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
         }
+
+        panel::tick();
+        web::tick();
 
         sleep_ms(16);
     }
